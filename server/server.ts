@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
 import 'dotenv/config';
 import cors from 'cors';    
-import { auth } from './lib/auth';
-import { toNodeHandler } from 'better-auth/node';
+import { getAuth } from './lib/auth';
 import userRouter from './routes/userRouters';
 import projectRouter from './routes/projectRoutes';
 import testRouter from './routes/testRoutes';
@@ -30,7 +29,24 @@ const corsOptions ={
 
 app.use(cors(corsOptions));
 app.post('/api/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
-app.all('/api/auth/{*any}', toNodeHandler(auth));
+
+let authHandlerPromise: Promise<(req: Request, res: Response) => unknown> | null = null;
+const getAuthHandler = async () => {
+    if (!authHandlerPromise) {
+        authHandlerPromise = (async () => {
+            const auth = await getAuth();
+            const { toNodeHandler } = await import('better-auth/node');
+            return toNodeHandler(auth);
+        })();
+    }
+
+    return authHandlerPromise;
+};
+
+app.all('/api/auth/{*any}', async (req: Request, res: Response) => {
+    const handler = await getAuthHandler();
+    return handler(req, res);
+});
 
 
 app.use(express.json({ limit: '50mb' }));
